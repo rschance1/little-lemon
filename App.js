@@ -1,132 +1,119 @@
-import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { useEffect, useMemo, useReducer } from 'react';
-import { Image, StyleSheet } from 'react-native';
-import Profile from './screens/ProfileScreen';
-import Onboarding, { AuthContext } from './screens/OnboardingScreen';
-import Home from './screens/HomeScreen';
-import { useFonts } from 'expo-font';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Button } from 'react-native-paper';
-import UserAvatar from './screens/AvatarScreen';
+import { NavigationContainer } from "@react-navigation/native";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { useEffect, useMemo, useReducer, useCallback } from "react";
+import { Alert } from "react-native";
+import Onboarding from "./screens/OnboardingScreen";
+import Profile from "./screens/ProfileScreen";
+import SplashScreen from "./screens/SplashScreen";
+import Home from "./screens/HomeScreen";
+import { StatusBar } from "expo-status-bar";
+
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+import { AuthContext } from "./context/AuthContext";
 
 const Stack = createNativeStackNavigator();
 
-export default function App() {
-  const [fontsLoaded] = useFonts({
-    'Karla': require('./assets/fonts/Karla-Regular.ttf'),
-    'MarkaziText': require('./assets/fonts//MarkaziText-Regular.ttf')
-  });
+export default function App({ navigation }) {
   const [state, dispatch] = useReducer(
     (prevState, action) => {
       switch (action.type) {
-        case 'SIGN_IN':
+        case "onboard":
           return {
-            isOnboardingCompleted: true,
-            name: action.name,
-            email: action.email
-          };
-        case 'SIGN_OUT':
-          return {
-            isOnboardingCompleted: false,
-            name: null,
-            email: null
+            ...prevState,
+            isLoading: false,
+            isOnboardingCompleted: action.isOnboardingCompleted,
           };
       }
     },
     {
+      isLoading: true,
       isOnboardingCompleted: false,
-      name: null,
-      email: null
     }
   );
+
   useEffect(() => {
-    async function loadData() {
-    let name = await AsyncStorage.getItem('name');
-    let email = await AsyncStorage.getItem('email');
-    if (name && email && name !== "" && email !== "") {
-      dispatch({ type: 'SIGN_IN', name, email });
-    } else {
-      dispatch({ type: 'SIGN_OUT' });
-    }
-  };
-
-  loadData();
-
-  }, []);
-  const authContext = useMemo(() => ({
-    signIn: async (name, email) => {
-      // In a production app, we need to send some data (usually username, password) to server and get a token
-      // We will also need to handle errors if sign in failed
-      // After getting token, we need to persist the token using `SecureStore`
-      // In the example, we'll use a dummy token
-      // await AsyncStorage.setItem('isOnboardingCompleted', true);
+    (async () => {
+      let profileData = [];
       try {
+        const getProfile = await AsyncStorage.getItem("profile");
+        if (getProfile !== null) {
+          profileData = getProfile;
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        if (Object.keys(profileData).length != 0) {
+          dispatch({ type: "onboard", isOnboardingCompleted: true });
+        } else {
+          dispatch({ type: "onboard", isOnboardingCompleted: false });
+        }
+      }
+    })();
+  }, []);
 
-      
-      const dataToStore = [
-        ['name', name],
-        ['email', email],
-        ['orderStatusesChecked', true],
-        ['passwordChangedChecked', true],
-        ['specialOffersChecked', true],
-        ['newsletterChecked', true]
-      ];
-      await AsyncStorage.multiSet(dataToStore.map(item => [item[0], JSON.stringify(item[1])]));
-      dispatch({ type: 'SIGN_IN', name, email });
+  const authContext = useMemo(
+    () => ({
+      onboard: async data => {
+        try {
+          const jsonValue = JSON.stringify(data);
+          await AsyncStorage.setItem("profile", jsonValue);
+        } catch (e) {
+          console.error(e);
+        }
 
-    } catch (error){
-      // Handle error, e.g., log or display an error message
-      console.error('Error during sign-in:', error);
-    }
-    },
-    saveProfile: {
+        dispatch({ type: "onboard", isOnboardingCompleted: true });
+      },
+      update: async data => {
+        try {
+          const jsonValue = JSON.stringify(data);
+          await AsyncStorage.setItem("profile", jsonValue);
+        } catch (e) {
+          console.error(e);
+        }
 
-    },
-    signOut: async () => {
-      await AsyncStorage.clear();
-      dispatch({ type: 'SIGN_OUT' });
-    },
-  }));
-  if (!fontsLoaded) {
-    return null;
+        Alert.alert("Success", "Successfully saved changes!");
+      },
+      logout: async () => {
+        try {
+          await AsyncStorage.clear();
+        } catch (e) {
+          console.error(e);
+        }
+
+        dispatch({ type: "onboard", isOnboardingCompleted: false });
+      },
+    }),
+    []
+  );
+
+  if (state.isLoading) {
+    return <SplashScreen />;
   }
+
   return (
-    <NavigationContainer>
-      <AuthContext.Provider value={authContext}>
+    <AuthContext.Provider value={authContext}>
+      <StatusBar style="dark" />
+      <NavigationContainer>
         <Stack.Navigator>
-          {
-            state.isOnboardingCompleted ?
-              (
-                <>
-                  <Stack.Screen name='Home' component={Home} options={({ navigation }) => ({
-                    headerTitle: (props) => <Image source={require('./assets/Logo.png')} />,
-                    headerRight: (props) => <Button children={<UserAvatar size={35} />} onPress={() => {
-                      navigation.navigate('Profile');
-                    }} />
-                  })} />
-                  <Stack.Screen name='Profile' component={Profile} options={({ navigation }) => ({
-                    headerTitle: (props) => <Image source={require('./assets/Logo.png')} />,
-                    headerRight: (props) => <UserAvatar size={35} />,
-                  })} />
-                </>
-              )
-              :
-              (<Stack.Screen name='Onboarding' component={Onboarding} options={{
-                headerTitle: (props) => <Image source={require('./assets/Logo.png')} />
-              }} />)
-          }
+          {state.isOnboardingCompleted ? (
+            <>
+              <Stack.Screen
+                name="HomeScreen"
+                component={Home}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen name="ProfileScreen" component={Profile} />
+            </>
+          ) : (
+            <Stack.Screen
+              name="OnboardingScreen"
+              component={Onboarding}
+              options={{ headerShown: false }}
+            />
+          )}
         </Stack.Navigator>
-      </AuthContext.Provider>
-    </NavigationContainer>
+      </NavigationContainer>
+    </AuthContext.Provider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
